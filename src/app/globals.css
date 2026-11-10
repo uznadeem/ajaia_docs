@@ -927,3 +927,19 @@ button:disabled, select:disabled {
     font-size: 15px;
   }
 }
+
+.dashboard-create-actions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.upload-document {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.upload-document .field-hint {
+  margin-top: 0;
+  text-align: center;
+}

@@ -358,6 +358,66 @@ describe("Document dashboard", () => {
   });
 });
 
+
+describe("Dashboard document upload", () => {
+  it("opens an accessible picker and uploads a selected file before navigating", async () => {
+    await ready();
+    const input = screen.getByLabelText("Upload document file");
+    expect(input).toHaveAttribute("accept", ".txt,.md");
+    expect(screen.getByText(".txt or .md · up to 1 MB")).toBeInTheDocument();
+    const picker = vi.spyOn(input, "click");
+    await userEvent.click(screen.getByRole("button", { name: "Upload Document" }));
+    expect(picker).toHaveBeenCalled();
+    override = (path) => path === "/api/documents/import" ? json({ document: created }, 201) : undefined;
+    const file = new File(["# Notes"], "notes.md", { type: "text/markdown" });
+    await userEvent.upload(input, file);
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/documents/cnew"));
+    const options = calls("POST", "/api/documents/import")[0][1]!;
+    expect(options.body).toBeInstanceOf(FormData);
+    expect((options.body as FormData).get("file")).toBe(file);
+    expect(options.headers).not.toHaveProperty("Content-Type");
+  });
+
+  it("shows uploading state and blocks duplicate submissions", async () => {
+    await ready();
+    const pending = deferred<Response>();
+    override = (path) => path === "/api/documents/import" ? pending.promise : undefined;
+    const input = screen.getByLabelText("Upload document file");
+    const file = new File(["Notes"], "notes.txt");
+    await userEvent.upload(input, file);
+    expect(screen.getByRole("button", { name: "Uploading…" })).toBeDisabled();
+    expect(input).toBeDisabled();
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(calls("POST", "/api/documents/import")).toHaveLength(1);
+    await act(async () => { pending.resolve(json({ document: created }, 201)); });
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [new File(["text"], "bad.pdf"), "Choose a .txt or .md file"],
+    [new File([], "empty.txt"), "file is empty"],
+    [new File([new Uint8Array(1024 * 1024 + 1)], "large.md"), "1 MB or smaller"],
+  ])("rejects an invalid file before requesting import (%#)", async (file, message) => {
+    await ready();
+    fireEvent.change(screen.getByLabelText("Upload document file"), { target: { files: [file] } });
+    expect(screen.getByRole("alert")).toHaveTextContent(message as string);
+    expect(calls("POST", "/api/documents/import")).toHaveLength(0);
+  });
+
+  it("shows API upload errors and permits retry", async () => {
+    await ready();
+    override = (path) => path === "/api/documents/import" ? json({ error: { message: "The file must contain valid UTF-8 text." } }, 400) : undefined;
+    const file = new File(["text"], "notes.txt");
+    await userEvent.upload(screen.getByLabelText("Upload document file"), file);
+    expect(await screen.findByRole("alert")).toHaveTextContent("UTF-8");
+    expect(screen.getByRole("button", { name: "Upload Document" })).toBeEnabled();
+    expect(push).not.toHaveBeenCalled();
+    override = (path) => path === "/api/documents/import" ? json({ document: created }, 201) : undefined;
+    await userEvent.upload(screen.getByLabelText("Upload document file"), file);
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/documents/cnew"));
+  });
+});
+
 describe("Document navigation", () => {
   it("opens an accessible document in the editor with a return link", async () => {
     render(<DocumentEditor id={owned.id} />);

@@ -9,9 +9,13 @@ export async function requestApi<T>(path: string, options: RequestInit = {}): Pr
     ...options,
     credentials: "same-origin",
     cache: "no-store",
-    headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+    headers: { ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...options.headers },
   });
   if (!response.ok) {
+    if (response.status === 400 || response.status === 413) {
+      const failure = await response.json().catch(() => null) as { error?: { message?: unknown } } | null;
+      if (typeof failure?.error?.message === "string") throw new RequestError(response.status, failure.error.message);
+    }
     if (response.status === 401) throw new RequestError(401, "Your demo session expired. Choose a user to continue.");
     if (response.status === 403) throw new RequestError(403, "You no longer have permission for this action. Your access may have changed.");
     if (response.status === 404) throw new RequestError(404, "This document was deleted or is no longer available to you.");

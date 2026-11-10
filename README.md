@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight collaborative document editor. Phase 6 adds debounced autosave to the Tiptap rich-text editor on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Uploads, sharing UI, realtime collaboration, and production authentication are not implemented.
+A lightweight collaborative document editor. Phase 7 adds TXT/Markdown import alongside the autosaving Tiptap editor on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Attachments, sharing UI, realtime collaboration, and production authentication are not implemented.
 
 ## Development
 
@@ -144,3 +144,16 @@ Title and content edits debounce for 800ms before using the existing PATCH/save 
 The status shows Unsaved, Saving, Saved, or Error. Failed saves preserve the in-memory draft and pause automatic retries until the next edit or manual Save; there is no background retry loop. Permission/session failures retain the existing paused/read-only behavior. Timers are cancelled on unmount, and the existing dirty/in-flight navigation and unload guards remain active.
 
 Known limits: browser unload is not guaranteed to finish a save, and confirming navigation can discard pending edits. Drafts are not persisted offline. Separate clients remain last-write-wins; no revision history or conflict-resolution infrastructure is introduced.
+
+
+## File import
+
+Use **Upload Document** on the dashboard to import one UTF-8 `.txt` or `.md` file, up to 1,048,576 bytes (1 MB). The file becomes a new document owned by the current signed-in demo user and opens in the existing editor. The original file is not stored. Duplicate submissions and other dashboard mutations are disabled during upload; invalid-file/API errors allow reselecting and retrying the same file.
+
+`POST /api/documents/import` accepts multipart/form-data with exactly one `file` field and no extra fields. It uses the existing signed session and same-origin checks. It bounds declared and streamed multipart bytes before native parsing, then validates extension, actual file size, strict UTF-8 decoding, nonempty text, title, generated JSON size, and the existing rich-text schema before writing to PostgreSQL. MIME types are not trusted. Filenames are reduced to a basename, normalized, stripped of control/angle-bracket characters, and validated against the existing 1–200-character title rules. Invalid requests use the existing standardized JSON errors; size failures return 413. A successful 201 response contains `{ document }` metadata (including ID, ownership, and permission), without content.
+
+TXT preserves paragraphs and single line breaks. Markdown uses markdown-it with raw HTML disabled and bounded nesting, converting tokens directly to Tiptap JSON rather than HTML. Headings, emphasis, lists, quotes, code, and rules are supported. Links become plain labels, images become alt text, raw HTML/scripts remain inert text, and tables/custom extensions are not imported as rich structures. No file URLs or image requests are generated.
+
+Existing document limits still apply: converted JSON plus title must fit 256 KiB, with at most 2,000 nodes, nesting depth 20, and 100,000 characters per merged text node. Consequently, some files below the upload-size cap are rejected if their converted document exceeds editor limits. No database migrations or storage services are introduced.
+
+Import API tests exercise the actual route with isolated, tracked document IDs and delete only their own records. Frontend tests mock fetch and cover selection, navigation, busy/duplicate protection, invalid files, API errors, and retry. The existing `npm run test` command includes all import, API, frontend, and database checks.

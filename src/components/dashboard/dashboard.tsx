@@ -5,6 +5,7 @@ import { DemoUserSelector } from "./demo-user-selector";
 import { DocumentList } from "./document-list";
 import { DocumentActionDialog } from "./document-action-dialog";
 import { useWorkspace } from "./use-workspace";
+import { UploadDocument } from "./upload-document";
 
 export function Dashboard() {
   const workspace = useWorkspace();
@@ -21,12 +22,14 @@ export function Dashboard() {
           <h1 id="workspace-title" tabIndex={-1}>Documents</h1>
           <p>Your ideas, drafts, and shared work. All in one place.</p>
         </div>
-        {workspace.user && <button id="new-document" className="button button-primary" disabled={busy || workspace.listState === "loading"}
+        {workspace.user && <div className="dashboard-create-actions"><UploadDocument disabled={busy || workspace.listState === "loading"} uploading={workspace.pending === "import"} onUpload={workspace.importDocument} />
+        <button id="new-document" className="button button-primary" disabled={busy || workspace.listState === "loading"}
           onClick={() => { void workspace.createDocument(); }}>
           <span aria-hidden="true">＋</span> {workspace.pending === "create" ? "Creating…" : "New Document"}
-        </button>}
+        </button></div>}
       </div>
       {workspace.message && workspace.sessionState !== "error" && <p className="workspace-message" role="status">{workspace.message}</p>}
+      {workspace.uploadError && <p role="alert" className="inline-error">{workspace.uploadError}</p>}
 
       {workspace.sessionState === "loading" || workspace.pending === "switch" || workspace.pending === "logout" ? (
         <div className="workspace-state" role="status"><span className="loading-dot" />{workspace.pending === "logout" ? "Signing out…" : "Loading your workspace…"}</div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DocumentResponse, DocumentsResponse, DocumentSummary, SessionResponse, SessionUser } from "@/lib/api/contracts";
 import { requestApi, RequestError, requestErrorMessage } from "@/lib/api/client";
+import { uploadValidationError } from "@/lib/documents/import-options";
 
 type ListState = "loading" | "ready" | "error";
 export type DocumentAction = { kind: "rename" | "delete"; document: DocumentSummary };
@@ -16,6 +17,7 @@ export function useWorkspace() {
   const [listState, setListState] = useState<ListState>("loading");
   const [message, setMessage] = useState("");
   const [listError, setListError] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [action, setAction] = useState<DocumentAction | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -73,6 +75,7 @@ export function useWorkspace() {
     controller.current = request;
     setPending(name);
     setMessage("");
+    setUploadError("");
     return request;
   }
   function finish(signal: AbortSignal) {
@@ -126,6 +129,26 @@ export function useWorkspace() {
     } finally { finish(request.signal); }
   }
 
+  async function importDocument(file: File) {
+    if (locked.current) return;
+    const problem = uploadValidationError(file);
+    if (problem) { setUploadError(problem); return; }
+    const request = begin("import");
+    if (!request) return;
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { document } = await requestApi<{ document: DocumentSummary }>("/api/documents/import", { method: "POST", body: form, signal: request.signal });
+      if (request.signal.aborted) return;
+      setDocuments((current) => [document, ...current]);
+      router.push(`/documents/${document.id}`);
+    } catch (error) {
+      if (request.signal.aborted) return;
+      if (error instanceof RequestError && error.status === 401) expire(error.message);
+      else setUploadError(requestErrorMessage(error));
+    } finally { finish(request.signal); }
+  }
+
   async function saveAction(title?: string) {
     if (!action) return;
     const request = begin(action.kind);
@@ -160,8 +183,8 @@ export function useWorkspace() {
   }
 
   return {
-    user, sessionState, documents, listState, message, listError, pending, action,
-    changeUser, createDocument, saveAction, retryDocuments, setAction,
+    user, sessionState, documents, listState, message, listError, uploadError, pending, action,
+    changeUser, createDocument, importDocument, saveAction, retryDocuments, setAction,
     retrySession: () => { setSessionState("loading"); setMessage(""); setAttempt((value) => value + 1); },
   };
 }
