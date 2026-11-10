@@ -12,6 +12,7 @@ import { editorExtensions } from "./config";
 import { EditorToolbar } from "./editor-toolbar";
 import { useUnsavedWarning } from "./use-unsaved-warning";
 import { WritingCanvas } from "./writing-canvas";
+import { ShareDialog } from "@/components/sharing/share-dialog";
 
 type Props = { document: DocumentResponse["document"]; initialContent: JSONContent };
 type Blocked = "permission" | "session" | "missing" | null;
@@ -28,6 +29,7 @@ export function EditorSession({ document, initialContent }: Props) {
   const [error, setError] = useState("");
   const [titleError, setTitleError] = useState("");
   const [editVersion, setEditVersion] = useState(0);
+  const [sharing, setSharing] = useState(false);
   const locked = useRef(false);
   const request = useRef<AbortController | null>(null);
   const canEdit = permission !== "VIEWER" && !blocked;
@@ -66,6 +68,11 @@ export function EditorSession({ document, initialContent }: Props) {
     }
     setError(requestErrorMessage(error));
   }, []);
+
+  const sharingAccessError = useCallback((error: unknown) => {
+    setSharing(false);
+    stopEditing(error);
+  }, [stopEditing]);
 
   const save = useCallback(async () => {
     if (!editor || !canEdit || locked.current) return;
@@ -159,6 +166,7 @@ export function EditorSession({ document, initialContent }: Props) {
           {!hidden && <p className="editor-owner">Owned by {document.owner.name}</p>}
         </div>
         <div className="editor-save-controls">
+          {permission === "OWNER" && !blocked && <button type="button" className="button button-secondary" disabled={saving || checking} onClick={() => setSharing(true)}>Share</button>}
           <span className={`permission-badge permission-${permission.toLowerCase()}`}>{hidden ? "Access unavailable" : permission === "OWNER" ? "Owner" : permission === "EDITOR" ? "Can edit" : "View only"}</span>
           <button className="button button-primary" disabled={!editor || !canEdit || !dirty || saving || checking} onClick={() => { void save(); }}>
             {saving ? "Saving…" : "Save"}
@@ -178,6 +186,7 @@ export function EditorSession({ document, initialContent }: Props) {
         {editor ? <><EditorToolbar editor={editor} disabled={!canEdit} />
           <WritingCanvas editor={editor} editable={canEdit} /></> : <p className="editor-initializing" role="status">Preparing your document…</p>}
       </section>}
+      {sharing && permission === "OWNER" && !blocked && <ShareDialog documentId={document.id} ownerName={document.owner.name} onClose={() => setSharing(false)} onAccessError={sharingAccessError} />}
     </main>
   );
 }

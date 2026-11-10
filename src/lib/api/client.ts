@@ -12,7 +12,7 @@ export async function requestApi<T>(path: string, options: RequestInit = {}): Pr
     headers: { ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...options.headers },
   });
   if (!response.ok) {
-    if (response.status === 400 || response.status === 413) {
+    if (response.status === 400 || response.status === 409 || response.status === 413) {
       const failure = await response.json().catch(() => null) as { error?: { message?: unknown } } | null;
       if (typeof failure?.error?.message === "string") throw new RequestError(response.status, failure.error.message);
     }

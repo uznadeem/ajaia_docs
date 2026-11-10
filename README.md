@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight collaborative document editor. Phase 7 adds TXT/Markdown import alongside the autosaving Tiptap editor on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Attachments, sharing UI, realtime collaboration, and production authentication are not implemented.
+A lightweight collaborative document editor. Phase 8 adds owner-managed document sharing alongside import and the autosaving Tiptap editor on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Attachments, realtime collaboration, and production authentication are not implemented.
 
 ## Development
 
@@ -62,7 +62,7 @@ Application server code should import `prisma` from `@/lib/db/prisma`. Its `serv
 
 Users have unique emails. Documents have required owners and JSONB content for Tiptap JSON; JSON structure is not validated at this database layer. A user can receive at most one share per document, with `VIEWER` or `EDITOR` permission. Indexes support owner/update-time and recipient/creation-time queries; the unique share index also supports document share lookups.
 
-Deleting a user cascades to their owned documents and received shares. Deleting a document cascades to its shares. Updating referenced IDs cascades to foreign keys. Document API authorization enforces owner/editor/viewer permissions. Share management and prevention of owner/self-sharing remain outside this phase.
+Deleting a user cascades to their owned documents and received shares. Deleting a document cascades to its shares. Updating referenced IDs cascades to foreign keys. Document API authorization enforces owner/editor/viewer permissions. Sharing management is owner-only and self-sharing is rejected.
 
 Seeding upserts Alice Demo (`alice@example.com`) and Bob Demo (`bob@example.com`) by email, preserving existing users and edits. It creates no documents or shares and is safe to repeat.
 
@@ -157,3 +157,21 @@ TXT preserves paragraphs and single line breaks. Markdown uses markdown-it with 
 Existing document limits still apply: converted JSON plus title must fit 256 KiB, with at most 2,000 nodes, nesting depth 20, and 100,000 characters per merged text node. Consequently, some files below the upload-size cap are rejected if their converted document exceeds editor limits. No database migrations or storage services are introduced.
 
 Import API tests exercise the actual route with isolated, tracked document IDs and delete only their own records. Frontend tests mock fetch and cover selection, navigation, busy/duplicate protection, invalid files, API errors, and retry. The existing `npm run test` command includes all import, API, frontend, and database checks.
+
+
+## Document sharing
+
+Owners can open **Share** in the document editor, select the other existing Alice/Bob demo user, and grant **Can view** (`VIEWER`) or **Can edit** (`EDITOR`). The dialog shows the current owner and recipients, supports permission changes and revocation, refreshes after changes, blocks duplicate submissions, and provides loading/error/success feedback. Native modal behavior, explicit Tab wrapping, Escape cancellation, and focus restoration are included. Editors and viewers do not see sharing controls.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/documents/[id]/shares` | Owner-only owner/recipient metadata and eligible unshared demo recipients. |
+| `POST /api/documents/[id]/shares` | Strict JSON `{ userId, permission }`; creates access and returns 201. Duplicate creation returns 409 without updating permission. |
+| `PATCH /api/documents/[id]/shares` | Same strict JSON shape; updates an existing recipient's permission and returns 200. Missing access returns 404. |
+| `DELETE /api/documents/[id]/shares/[userId]` | Revokes an existing recipient and returns 204; missing access returns 404. |
+
+Every endpoint uses the signed session, validates CUID identifiers, and checks ownership before looking up recipients. Mutations require the existing same-origin checks. Unknown/unrelated recipients, self-sharing, invalid permissions, and extra owner fields are rejected. Only the two seeded demo users are eligible. Visible non-owner documents return 403; absent/inaccessible documents return 404. Lists do not expose unrelated users or document content. Operations use the existing Prisma relationships, transactions, ownership filters, and unique share constraint; no schema changes are needed.
+
+Shared documents appear in the existing dashboard when the recipient switches into their demo session or reloads. Viewers can read, editors can edit/save, and only owners can delete or manage sharing. Revocation removes dashboard visibility and returns 404 on subsequent document requests. An already-open editor learns about permission changes on its next request: 403 pauses editing, while 401/404 also hides content, preserving the local unsaved draft under the existing recovery behavior. There is no realtime permission push or polling.
+
+Sharing API tests use real route handlers/Neon and clean up only tracked fixture documents/users; they cover both demo owners, visibility, viewer/editor saves, downgrade/revocation, duplicates, self-sharing, authorization, invalid users/inputs, same-origin checks, and expired sessions. Frontend tests mock fetch and cover the dialog, role-specific controls, permission updates, revocation, pending/duplicate states, errors/retry, keyboard focus, and loss of owner access.

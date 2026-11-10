@@ -943,3 +943,50 @@ button:disabled, select:disabled {
   margin-top: 0;
   text-align: center;
 }
+
+.share-dialog {
+  width: min(560px, calc(100% - 32px));
+}
+.share-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 13px;
+}
+.share-form select, .share-recipient select {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: white;
+  font-size: 13px;
+}
+.share-form .button {
+  justify-self: end;
+  margin-top: 8px;
+}
+.share-recipients {
+  margin-top: 28px;
+  font-size: 13px;
+}
+.share-recipients h3 {
+  font-weight: 600;
+}
+.share-recipient {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.share-recipient > div {
+  flex: 1;
+  min-width: 140px;
+  overflow-wrap: anywhere;
+}
+.share-recipient span {
+  color: var(--muted);
+  font-size: 11px;
+}
