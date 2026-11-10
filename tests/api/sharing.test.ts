@@ -170,9 +170,18 @@ describe("Owner-managed document sharing", { concurrency: false }, () => {
 
   it("also allows Bob to share his owned document with Alice", async () => {
     const bobDocument = await fixture(bobId);
+    const owned = await document.GET(request("GET", bobCookie), context(bobDocument));
+    const ownedData = (await owned.json()).document;
+    assert.equal(ownedData.ownerId, bobId);
+    assert.equal(ownedData.permission, "OWNER");
+    assert.equal(ownedData.relationship, "owned");
     const response = await shares.POST(request("POST", bobCookie, { userId: aliceId, permission: "EDITOR" }), context(bobDocument));
     assert.equal(response.status, 201);
     const read = await document.GET(request("GET", aliceCookie), context(bobDocument));
     assert.equal((await read.json()).document.permission, "EDITOR");
+    const listed = await shares.GET(request("GET", bobCookie), context(bobDocument));
+    assert.equal((await listed.json()).recipients[0].userId, aliceId);
+    assert.equal((await shares.PATCH(request("PATCH", bobCookie, { userId: aliceId, permission: "VIEWER" }), context(bobDocument))).status, 200);
+    assert.equal((await revoke.DELETE(request("DELETE", bobCookie), recipientContext(bobDocument, aliceId))).status, 204);
   });
 });

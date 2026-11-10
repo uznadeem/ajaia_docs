@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Link from "next/link";
 import type { JSONContent } from "@tiptap/react";
 import type { DocumentResponse } from "@/lib/api/contracts";
@@ -14,6 +14,9 @@ type LoadState = { kind: "loading" } | { kind: "ready"; document: DocumentRespon
 function DocumentLoader({ id }: { id: string }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // Next.js Activity preserves this route's state while hidden. Discard the
+  // loaded editor before restoration so permissions/content come from the new GET.
+  useLayoutEffect(() => () => { setState({ kind: "loading" }); }, []);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {

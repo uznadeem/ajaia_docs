@@ -268,6 +268,22 @@ describe("Document API route integration", { concurrency: false }, () => {
     const body = await documentFrom(response);
     assert.equal(body.id, doc.id); assert.equal(body.permission, "OWNER"); assert.deepEqual(body.content, empty);
   });
+  it("returns the acknowledged content on the first GET after a save", async () => {
+    const doc = await fixture();
+    const content = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: `First reopen ${randomUUID()}` }] }] };
+    const saved = await individual.PATCH(request(`/api/documents/${doc.id}`, "PATCH", aliceCookie, { content }), context(doc.id));
+    assert.equal(saved.status, 200);
+    assert.equal(saved.headers.get("cache-control"), "no-store");
+    assert.deepEqual((await documentFrom(saved)).content, content);
+    const reopened = await individual.GET(request(`/api/documents/${doc.id}`, "GET", aliceCookie), context(doc.id));
+    assert.equal(reopened.status, 200);
+    assert.equal(reopened.headers.get("cache-control"), "no-store");
+    const fresh = await documentFrom(reopened);
+    assert.deepEqual(fresh.content, content);
+    assert.equal(fresh.permission, "OWNER");
+    assert.equal(fresh.ownerId, alice.id);
+  });
+
   it("renames a document without changing content", async () => {
     const doc = await fixture();
     const response = await individual.PATCH(request(`/api/documents/${doc.id}`, "PATCH", aliceCookie, { title: "  Renamed  " }), context(doc.id));

@@ -1,3 +1,4 @@
+import { Activity } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -554,5 +555,59 @@ describe("Debounced autosave", () => {
     unmount();
     await advance(2000);
     expect(patches()).toHaveLength(0);
+  });
+});
+
+
+describe("Cached document route regression", () => {
+  it("restores Bob's OWNER controls when revisiting a cached editor after switching users", async () => {
+    document.ownerId = "bob";
+    document.owner = { id: "bob", name: "Bob Demo" };
+    document.permission = "EDITOR";
+    document.relationship = "shared";
+    const view = render(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    await screen.findByRole("textbox", { name: "Document content" });
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+    view.rerender(<Activity mode="hidden"><DocumentEditor id={id} /></Activity>);
+    // Same document, now opened in Bob's session. The API correctly returns OWNER.
+    document = { ...document, permission: "OWNER", relationship: "owned" };
+    const fresh = deferred<Response>();
+    override = () => fresh.promise;
+    view.rerender(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    expect(screen.queryByRole("textbox", { name: "Document content" })).not.toBeInTheDocument();
+    expect(screen.getByText("Loading document…")).toBeInTheDocument();
+    await act(async () => { fresh.resolve(json({ document })); });
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, options]) => !options?.method)).toHaveLength(2));
+    expect(await screen.findByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByText("Owner", { exact: true })).toBeInTheDocument();
+  });
+
+  it("shows persisted autosave content on the first cached reopen", async () => {
+    const view = render(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    const box = await screen.findByRole("textbox", { name: "Document content" });
+    const editor = (box as HTMLElement & { editor: Editor }).editor;
+    insert(editor, "Persisted by autosave on first reopen ");
+    await waitFor(() => expect(patches()).toHaveLength(1), { timeout: 2500 });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("All changes saved"));
+    expect(document.content).toEqual(editor.getJSON());
+    view.rerender(<Activity mode="hidden"><DocumentEditor id={id} /></Activity>);
+    await waitFor(() => expect(editor.isDestroyed).toBe(true));
+    view.rerender(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, options]) => !options?.method)).toHaveLength(2));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Document content" })).toHaveTextContent("Persisted by autosave on first reopen"));
+    expect(patches()).toHaveLength(1);
+    for (const [, options] of fetchMock.mock.calls) expect(options?.cache).toBe("no-store");
+  });
+
+  it.each(["EDITOR", "VIEWER"] as const)("revalidates cached OWNER controls to %s without exposing sharing", async (permission) => {
+    const view = render(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    await screen.findByRole("textbox", { name: "Document content" });
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    view.rerender(<Activity mode="hidden"><DocumentEditor id={id} /></Activity>);
+    document = { ...document, permission, relationship: "shared" };
+    view.rerender(<Activity mode="visible"><DocumentEditor id={id} /></Activity>);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, options]) => !options?.method)).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "Document content" })).toHaveAttribute("contenteditable", permission === "VIEWER" ? "false" : "true");
   });
 });
