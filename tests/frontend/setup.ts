@@ -6,6 +6,16 @@ import { afterEach, vi } from "vitest";
 HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
 HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
+// ProseMirror asks for layout geometry; jsdom does not perform layout.
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+}
+if (!document.elementFromPoint) document.elementFromPoint = () => null;
+if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => {};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

@@ -318,7 +318,7 @@ describe("Document API route integration", { concurrency: false }, () => {
     const doc = await fixture();
     const content = { type: "doc", content: [
       { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Item" }, { type: "hardBreak" }] }] }] },
-      { type: "orderedList", attrs: { start: 2 }, content: [{ type: "listItem", content: [{ type: "paragraph" }] }] },
+      { type: "orderedList", attrs: { start: 2, type: null }, content: [{ type: "listItem", content: [{ type: "paragraph" }] }] },
       { type: "blockquote", content: [{ type: "paragraph" }] },
       { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "const x = 1" }] }, { type: "horizontalRule" },
     ] };

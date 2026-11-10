@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight collaborative document editor. Phase 4 adds the document dashboard on top of the existing signed demo sessions and PostgreSQL document APIs. Rich-text editing, autosave, uploads, sharing UI, and production authentication are not implemented.
+A lightweight collaborative document editor. Phase 5 adds a Tiptap rich-text editor with explicit saving on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Autosave, uploads, sharing UI, realtime collaboration, and production authentication are not implemented.
 
 ## Development
 
@@ -21,6 +21,7 @@ npm run db:validate
 npm run test:db
 npm run test:api
 npm run test:frontend
+npm run test
 ```
 
 ## Structure
@@ -96,7 +97,7 @@ Centralized ownership/share filters scope reads and writes. PATCH includes owner
 
 Document IDs must be CUIDs. Titles are trimmed and must contain 1–200 characters. Bodies are limited to 256 KiB by both the declared content length and actual streamed bytes. Extra request fields, invalid UTF-8/JSON, and unsupported rich-text fields are rejected.
 
-Content supports a strict Tiptap StarterKit subset: `doc`, paragraphs, headings (levels 1–6), text, hard breaks, horizontal rules, blockquotes, bullet/ordered lists, list items, and code blocks. Marks: bold, italic, strike, code, underline. Only the documented node attributes (heading level, ordered-list start, code language) are accepted. Text cannot appear directly in the root; list items must start with paragraphs. Root content requires at least one block. Validation is iterative, limited to 2,000 nodes and depth 20. Images, links, HTML, arbitrary attributes, tables, and custom extensions are intentionally unsupported. Future rendering must use safe Tiptap rendering rather than treating stored text as HTML.
+Content supports a strict Tiptap StarterKit subset: `doc`, paragraphs, headings (levels 1–6), text, hard breaks, horizontal rules, blockquotes, bullet/ordered lists, list items, and code blocks. Marks: bold, italic, strike, code, underline. Only the documented node attributes (heading level, ordered-list start and nullable HTML numbering type, code language) are accepted. Tiptap 3 emits an ordered-list `type: null` for decimal lists; the API accepts null or `1`/`a`/`A`/`i`/`I`. Text cannot appear directly in the root; list items must start with paragraphs. Root content requires at least one block. Validation is iterative, limited to 2,000 nodes and depth 20. Images, links, HTML, arbitrary attributes, tables, and custom extensions are intentionally unsupported. The editor renders through Tiptap's schema, not raw stored HTML.
 
 ### API tests and security limitations
 
@@ -114,10 +115,26 @@ The root page/layout remain Server Components. `src/components/dashboard` contai
 
 Dialogs use native modal semantics and inert backgrounds, explicit keyboard focus wrapping, Escape cancellation, safe initial focus, and return focus to the action trigger or workspace heading when a list refresh removes that trigger. Controls and forms have labels, focus indicators, validation feedback, and disabled pending states. Loading, retry, empty, network error, and expired-session states are included.
 
-`/documents/[id]` is an access-checked metadata placeholder with a return link. It uses the existing document GET endpoint, discards content from UI state, and does not render document content or provide editing/autosave. Phase 5 should replace this placeholder and retain backend permissions and content validation. The dashboard intentionally does not poll or subscribe to remote changes; shared lists are empty until shares exist in the database.
+`/documents/[id]` opens the access-checked document editor described below. The dashboard intentionally does not poll or subscribe to remote changes; shared lists are empty until shares exist in the database.
 
 ### Frontend verification
 
-`npm run test:frontend` uses Vitest, jsdom, and React Testing Library with fetch mocked at the component boundary. It does not connect to Neon. Coverage includes user selection/switching, no session, loading/error/retry, grouping and metadata, stale responses, create/navigation and duplicate protection, title validation, role-specific actions, confirmation cancellation, dialog focus, permission changes, logout/expiry, unmount cancellation, and document placeholders. jsdom's missing native dialog methods are shimmed in test setup; browser checks cover actual dialog behavior.
+`npm run test:frontend` uses Vitest, jsdom, and React Testing Library with fetch mocked at the component boundary. It does not connect to Neon. Coverage includes user selection/switching, no session, loading/error/retry, grouping and metadata, stale responses, create/navigation and duplicate protection, title validation, role-specific actions, confirmation cancellation, dialog focus, permission changes, logout/expiry, unmount cancellation, and document editing. jsdom's missing native dialog and layout methods are shimmed in test setup; browser checks cover actual dialog and editor behavior.
 
 The existing `test:api` and `test:db` commands continue to use isolated Neon fixtures. `npm ci` installs the locked test-tool versions; they are development dependencies and are not used by the deployed application.
+
+## Rich-text editing and explicit saving
+
+The document page remains a Server Component with a client editor behind its existing Suspense boundary. It fetches `GET /api/documents/[id]`, validates stored JSON against the shared API schema and ProseMirror schema, and initializes Tiptap once per loaded document. A keyed loader immediately removes the old document on ID changes; abort signals prevent stale fetches from displaying it again.
+
+The three matching Tiptap packages are `@tiptap/react`, `@tiptap/pm`, and `@tiptap/starter-kit`. StarterKit 3 already includes underline. The toolbar provides paragraphs, bold, italic, underline, H1–H3, bullet lists, and numbered lists, with active states, labels, and arrow/Home/End keyboard navigation. Standard Tiptap keyboard shortcuts are retained. Existing API-supported StarterKit content such as code, quotes, strike, and H4–H6 remains readable/editable; no extra extensions are installed. Links and automatic trailing nodes are disabled to stay compatible with API validation and avoid unsolicited document changes.
+
+Owners and editors can edit the title and content; viewers get a read-only title, canvas, and disabled formatting/Save controls. The backend remains authoritative. Save validates the shared title/content schemas and 256 KiB request limit, then PATCHes only changed fields. Clean documents make no PATCH request. A synchronous lock prevents duplicate submissions. Typing can continue while saving; the response acknowledges the submitted snapshot without resetting editor content or newer title edits. Newer local edits remain unsaved and can be saved separately. There is no autosave.
+
+Failed saves keep the draft and allow retry. A 403 pauses editing; 401/404 also hide title/content. Drafts remain only in this tab's memory. After restoring the session/access, **Check access again** revalidates with GET and resumes permitted editing without replacing the draft. View-only access stays read-only. No draft or session data is written to localStorage.
+
+Dirty or in-flight saves register a browser `beforeunload` warning and intercept ordinary same-origin document/header links with confirmation. Reload/close warnings depend on browser support and user interaction; SPA back/forward history and programmatic navigation cannot be universally blocked by this guard. Leaving or reloading after confirmation discards the in-memory draft.
+
+Editor tests use real Tiptap/ProseMirror state and toolbar commands, with only fetch mocked. They cover formatting, empty documents, title/content saving, API compatibility, failures, overlapping typing/save responses, duplicate prevention, warnings, access changes, cancellation, and resource destruction. `npm run test` runs frontend, API, and database suites in sequence and therefore requires the configured Neon connection and seeded users. `npm run test:frontend` stays database-free.
+
+For Phase 6, reuse the explicit snapshot/save acknowledgement logic when adding autosave, and design retry/backoff and navigation flushing deliberately. The current API has no revision precondition or conflict resolution: separate clients still use last-write-wins. Reload recovery and durable offline drafts are not implemented.

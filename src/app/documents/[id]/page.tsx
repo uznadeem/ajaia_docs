@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import { DocumentPlaceholder } from "@/components/dashboard/document-placeholder";
+import { DocumentEditor } from "@/components/editor/document-editor";
 
 export const metadata = { title: "Document" };
 
 async function DocumentRoute({ params }: PageProps<"/documents/[id]">) {
   const { id } = await params;
-  return <DocumentPlaceholder key={id} id={id} />;
+  return <DocumentEditor key={id} id={id} />;
 }
 
 export default function DocumentPage(props: PageProps<"/documents/[id]">) {

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "@/components/dashboard/dashboard";
-import { DocumentPlaceholder } from "@/components/dashboard/document-placeholder";
+import { DocumentEditor } from "@/components/editor/document-editor";
 import type { DocumentSummary, SessionUser } from "@/lib/api/contracts";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -358,18 +358,17 @@ describe("Document dashboard", () => {
   });
 });
 
-describe("Document navigation placeholder", () => {
-  it("loads accessible metadata with a return link and no editor/content rendering", async () => {
-    render(<DocumentPlaceholder id={owned.id} />);
-    expect(await screen.findByRole("heading", { name: "Project notes" })).toBeInTheDocument();
-    expect(screen.getByText(/editor is coming in Phase 5/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Back to workspace/ })).toHaveAttribute("href", "/");
-    expect(screen.queryByText("Private body text")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+describe("Document navigation", () => {
+  it("opens an accessible document in the editor with a return link", async () => {
+    render(<DocumentEditor id={owned.id} />);
+    expect(await screen.findByLabelText("Document title")).toHaveValue("Project notes");
+    expect(await screen.findByRole("textbox", { name: "Document content" })).toHaveTextContent("Private body text");
+    expect(screen.getByRole("link", { name: /Back to dashboard/ })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
   it("handles session expiry without exposing a document", async () => {
     activeUser = null;
-    render(<DocumentPlaceholder id={owned.id} />);
+    render(<DocumentEditor id={owned.id} />);
     expect(await screen.findByRole("heading", { name: "Document unavailable" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("session expired");
     expect(screen.queryByRole("heading", { name: "Project notes" })).not.toBeInTheDocument();

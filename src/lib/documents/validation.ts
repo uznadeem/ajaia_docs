@@ -15,7 +15,11 @@ const nodeSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("codeBlock"), attrs: z.strictObject({ language: z.string().max(50).nullable().optional() }).optional(), content: children.optional() }),
   z.strictObject({ type: z.literal("blockquote"), content: children.min(1) }),
   z.strictObject({ type: z.literal("bulletList"), content: children.min(1) }),
-  z.strictObject({ type: z.literal("orderedList"), attrs: z.strictObject({ start: z.number().int().min(1).max(1_000_000) }).optional(), content: children.min(1) }),
+  z.strictObject({ type: z.literal("orderedList"), attrs: z.strictObject({
+    start: z.number().int().min(1).max(1_000_000),
+    // Tiptap 3 emits this attribute even for default decimal numbering.
+    type: z.enum(["1", "a", "A", "i", "I"]).nullable().optional(),
+  }).optional(), content: children.min(1) }),
   z.strictObject({ type: z.literal("listItem"), content: children.min(1) }),
 ]);
 const rootSchema = z.strictObject({ type: z.literal("doc"), content: children.min(1) });

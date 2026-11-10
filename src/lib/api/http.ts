@@ -1,6 +1,9 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { MAX_BODY_BYTES } from "./limits";
+
+export { MAX_BODY_BYTES } from "./limits";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -35,8 +38,6 @@ export function requireSameOrigin(request: NextRequest) {
     throw new ApiError(403, "INVALID_ORIGIN", "A same-origin request is required.");
   }
 }
-
-export const MAX_BODY_BYTES = 256 * 1024;
 
 export async function readJson(request: NextRequest): Promise<unknown> {
   const length = request.headers.get("content-length");
