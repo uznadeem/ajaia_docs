@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight collaborative document editor. Phase 5 adds a Tiptap rich-text editor with explicit saving on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Autosave, uploads, sharing UI, realtime collaboration, and production authentication are not implemented.
+A lightweight collaborative document editor. Phase 6 adds debounced autosave to the Tiptap rich-text editor on top of the dashboard, signed demo sessions, and PostgreSQL document APIs. Uploads, sharing UI, realtime collaboration, and production authentication are not implemented.
 
 ## Development
 
@@ -129,7 +129,7 @@ The document page remains a Server Component with a client editor behind its exi
 
 The three matching Tiptap packages are `@tiptap/react`, `@tiptap/pm`, and `@tiptap/starter-kit`. StarterKit 3 already includes underline. The toolbar provides paragraphs, bold, italic, underline, H1–H3, bullet lists, and numbered lists, with active states, labels, and arrow/Home/End keyboard navigation. Standard Tiptap keyboard shortcuts are retained. Existing API-supported StarterKit content such as code, quotes, strike, and H4–H6 remains readable/editable; no extra extensions are installed. Links and automatic trailing nodes are disabled to stay compatible with API validation and avoid unsolicited document changes.
 
-Owners and editors can edit the title and content; viewers get a read-only title, canvas, and disabled formatting/Save controls. The backend remains authoritative. Save validates the shared title/content schemas and 256 KiB request limit, then PATCHes only changed fields. Clean documents make no PATCH request. A synchronous lock prevents duplicate submissions. Typing can continue while saving; the response acknowledges the submitted snapshot without resetting editor content or newer title edits. Newer local edits remain unsaved and can be saved separately. There is no autosave.
+Owners and editors can edit the title and content; viewers get a read-only title, canvas, and disabled formatting/Save controls. The backend remains authoritative. Save validates the shared title/content schemas and 256 KiB request limit, then PATCHes only changed fields. Clean documents make no PATCH request. A synchronous lock prevents duplicate submissions. Typing can continue while saving; the response acknowledges the submitted snapshot without resetting editor content or newer title edits. Newer local edits remain unsaved and can be saved separately. Autosave uses this same save path, as described below.
 
 Failed saves keep the draft and allow retry. A 403 pauses editing; 401/404 also hide title/content. Drafts remain only in this tab's memory. After restoring the session/access, **Check access again** revalidates with GET and resumes permitted editing without replacing the draft. View-only access stays read-only. No draft or session data is written to localStorage.
 
@@ -137,4 +137,10 @@ Dirty or in-flight saves register a browser `beforeunload` warning and intercept
 
 Editor tests use real Tiptap/ProseMirror state and toolbar commands, with only fetch mocked. They cover formatting, empty documents, title/content saving, API compatibility, failures, overlapping typing/save responses, duplicate prevention, warnings, access changes, cancellation, and resource destruction. `npm run test` runs frontend, API, and database suites in sequence and therefore requires the configured Neon connection and seeded users. `npm run test:frontend` stays database-free.
 
-For Phase 6, reuse the explicit snapshot/save acknowledgement logic when adding autosave, and design retry/backoff and navigation flushing deliberately. The current API has no revision precondition or conflict resolution: separate clients still use last-write-wins. Reload recovery and durable offline drafts are not implemented.
+## Autosave
+
+Title and content edits debounce for 800ms before using the existing PATCH/save path. Clean documents and viewers never autosave. Saves do not overlap; newer edits made during a request remain dirty and schedule a follow-up 800ms after that request finishes. Manual Save bypasses the debounce and prevents a duplicate timer request.
+
+The status shows Unsaved, Saving, Saved, or Error. Failed saves preserve the in-memory draft and pause automatic retries until the next edit or manual Save; there is no background retry loop. Permission/session failures retain the existing paused/read-only behavior. Timers are cancelled on unmount, and the existing dirty/in-flight navigation and unload guards remain active.
+
+Known limits: browser unload is not guaranteed to finish a save, and confirming navigation can discard pending edits. Drafts are not persisted offline. Separate clients remain last-write-wins; no revision history or conflict-resolution infrastructure is introduced.

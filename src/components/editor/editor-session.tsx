@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useEditor, type JSONContent } from "@tiptap/react";
 import type { DocumentResponse } from "@/lib/api/contracts";
@@ -27,6 +27,7 @@ export function EditorSession({ document, initialContent }: Props) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
   const [titleError, setTitleError] = useState("");
+  const [editVersion, setEditVersion] = useState(0);
   const locked = useRef(false);
   const request = useRef<AbortController | null>(null);
   const canEdit = permission !== "VIEWER" && !blocked;
@@ -44,7 +45,10 @@ export function EditorSession({ document, initialContent }: Props) {
       "aria-multiline": "true", "aria-readonly": String(!canEdit), spellcheck: "true",
     } },
     onUpdate: ({ editor }) => {
+      if (!canEdit) return;
       setDirty(titleRef.current !== saved.current.title || JSON.stringify(editor.getJSON()) !== saved.current.content);
+      setError("");
+      setEditVersion((version) => version + 1);
     },
   });
 
@@ -54,16 +58,16 @@ export function EditorSession({ document, initialContent }: Props) {
   }, [editor, canEdit]);
   useEffect(() => () => { request.current?.abort(); }, []);
 
-  function stopEditing(error: unknown) {
+  const stopEditing = useCallback((error: unknown) => {
     if (error instanceof RequestError) {
       if (error.status === 401) setBlocked("session");
       if (error.status === 404) setBlocked("missing");
       if (error.status === 403) { setBlocked("permission"); setPermission("VIEWER"); }
     }
     setError(requestErrorMessage(error));
-  }
+  }, []);
 
-  async function save() {
+  const save = useCallback(async () => {
     if (!editor || !canEdit || locked.current) return;
     const parsedTitle = titleSchema.safeParse(titleRef.current);
     if (!parsedTitle.success) { setTitleError(parsedTitle.error.issues[0].message); return; }
@@ -108,7 +112,13 @@ export function EditorSession({ document, initialContent }: Props) {
     } finally {
       if (!controller.signal.aborted) { locked.current = false; setSaving(false); }
     }
-  }
+  }, [editor, canEdit, document.id, stopEditing]);
+
+  useEffect(() => {
+    if (!editor || !canEdit || !dirty || saving || checking || error || titleError) return;
+    const timer = window.setTimeout(() => { void save(); }, 800);
+    return () => window.clearTimeout(timer);
+  }, [editor, canEdit, dirty, saving, checking, error, titleError, editVersion, save]);
 
   async function checkAccess() {
     if (locked.current) return;
@@ -142,7 +152,9 @@ export function EditorSession({ document, initialContent }: Props) {
               titleRef.current = value;
               setTitle(value);
               setTitleError("");
+              setError("");
               setDirty(value !== saved.current.title || (editor ? JSON.stringify(editor.getJSON()) !== saved.current.content : false));
+              setEditVersion((version) => version + 1);
             }} />}
           {!hidden && <p className="editor-owner">Owned by {document.owner.name}</p>}
         </div>
@@ -155,7 +167,7 @@ export function EditorSession({ document, initialContent }: Props) {
       </div>
       {titleError && <p id="title-error" className="inline-error" role="alert">{titleError}</p>}
       <div className="editor-status-row">
-        <p role="status" aria-live="polite">{saving ? "Saving changes…" : dirty ? "Unsaved changes" : "All changes saved"}</p>
+        <p role="status" aria-live="polite">{saving ? "Saving changes…" : error || titleError ? "Unsaved changes — Error saving" : dirty ? "Unsaved changes" : "All changes saved"}</p>
         {!hidden && permission === "VIEWER" && <span>View-only document</span>}
       </div>
       {error && <div className="editor-error" role="alert"><p>{error}</p>

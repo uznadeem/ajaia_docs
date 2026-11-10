@@ -413,3 +413,146 @@ describe("Rich-text document editor with real Tiptap", () => {
     await waitFor(() => expect(editor.isDestroyed).toBe(true));
   });
 });
+
+describe("Debounced autosave", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  async function advance(ms: number) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  }
+  function timers() { vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); }
+
+  it("autosaves title and content after 800ms, not on initial load", async () => {
+    const { editor } = await open();
+    timers();
+    await advance(1000);
+    expect(patches()).toHaveLength(0);
+    insert(editor, "Autosaved content ");
+    fireEvent.change(screen.getByLabelText("Document title"), { target: { value: "Autosaved title" } });
+    await advance(799);
+    expect(patches()).toHaveLength(0);
+    await advance(1);
+    expect(patches()).toHaveLength(1);
+    expect(payload()).toEqual({ title: "Autosaved title", content: editor.getJSON() });
+    expect(screen.getByRole("status")).toHaveTextContent("All changes saved");
+    await advance(3000);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("debounces rapid consecutive edits into one request for the latest draft", async () => {
+    const { editor } = await open();
+    timers();
+    insert(editor, "First ");
+    await advance(600);
+    insert(editor, "Second ");
+    await advance(600);
+    fireEvent.change(screen.getByLabelText("Document title"), { target: { value: "Latest title" } });
+    await advance(799);
+    expect(patches()).toHaveLength(0);
+    await advance(1);
+    expect(patches()).toHaveLength(1);
+    expect(payload()).toEqual({ title: "Latest title", content: editor.getJSON() });
+  });
+
+  it("serializes saves and follows up for edits made during an in-flight request", async () => {
+    const { editor, box } = await open();
+    timers();
+    const pending = deferred<Response>();
+    let hold = true;
+    override = (_url, options) => options.method === "PATCH" && hold ? pending.promise : undefined;
+    insert(editor, "First snapshot ");
+    await advance(800);
+    expect(screen.getByRole("status")).toHaveTextContent("Saving");
+    expect(patches()).toHaveLength(1);
+    insert(editor, "Newer local changes ");
+    await advance(4000);
+    fireEvent.click(screen.getByRole("button", { name: "Saving…" }));
+    expect(patches()).toHaveLength(1);
+    hold = false;
+    await act(async () => { pending.resolve(json({ document })); });
+    expect(box).toHaveTextContent("Newer local changes");
+    expect(screen.getByRole("status")).toHaveTextContent("Unsaved changes");
+    await advance(800);
+    expect(patches()).toHaveLength(2);
+    expect(payload(1)).toEqual({ content: editor.getJSON() });
+    expect(screen.getByRole("status")).toHaveTextContent("All changes saved");
+  });
+
+  it("retains failed drafts without a retry loop and supports manual retry", async () => {
+    const { editor, box } = await open();
+    timers();
+    override = (_url, options) => options.method === "PATCH" ? json({}, 500) : undefined;
+    insert(editor, "Keep this failed draft ");
+    await advance(800);
+    expect(screen.getByRole("status")).toHaveTextContent("Error saving");
+    expect(box).toHaveTextContent("Keep this failed draft");
+    await advance(5000);
+    expect(patches()).toHaveLength(1);
+    override = undefined;
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save" })); });
+    expect(patches()).toHaveLength(2);
+    expect(payload(1)).toEqual(payload(0));
+    expect(screen.getByRole("status")).toHaveTextContent("All changes saved");
+    await advance(2000);
+    expect(patches()).toHaveLength(2);
+  });
+
+  it("retries after a new edit following a failed autosave", async () => {
+    const { editor } = await open();
+    timers();
+    override = (_url, options) => options.method === "PATCH" ? json({}, 500) : undefined;
+    insert(editor, "First ");
+    await advance(800);
+    expect(screen.getByRole("status")).toHaveTextContent("Error saving");
+    override = undefined;
+    insert(editor, "Retry with latest changes ");
+    await advance(800);
+    expect(patches()).toHaveLength(2);
+    expect(payload(1)).toEqual({ content: editor.getJSON() });
+    expect(screen.getByRole("status")).toHaveTextContent("All changes saved");
+  });
+
+  it("stops autosaving after permission is revoked and preserves the draft", async () => {
+    const { editor, box } = await open();
+    timers();
+    override = (_url, options) => options.method === "PATCH" ? json({}, 403) : undefined;
+    insert(editor, "Retained after revocation ");
+    await advance(800);
+    expect(box).toHaveTextContent("Retained after revocation");
+    expect(box).toHaveAttribute("contenteditable", "false");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await advance(5000);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("never autosaves a viewer document", async () => {
+    document.permission = "VIEWER";
+    const { box } = await open();
+    timers();
+    await advance(3000);
+    expect(box).toHaveAttribute("contenteditable", "false");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("manual Save flushes immediately and cancels the pending debounce", async () => {
+    const { editor } = await open();
+    timers();
+    insert(editor, "Save now ");
+    await advance(400);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save" })); });
+    expect(patches()).toHaveLength(1);
+    await advance(2000);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("cancels a pending autosave when the document unmounts", async () => {
+    const { editor, unmount } = await open();
+    timers();
+    insert(editor, "Do not save after unmount ");
+    await advance(400);
+    unmount();
+    await advance(2000);
+    expect(patches()).toHaveLength(0);
+  });
+});
