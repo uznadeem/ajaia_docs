@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight collaborative document editor. Phase 3 adds document CRUD APIs and signed demo sessions on the PostgreSQL foundation. The workspace remains a static placeholder; dashboard, editor, uploads, sharing UI, and production authentication are not implemented.
+A lightweight collaborative document editor. Phase 4 adds the document dashboard on top of the existing signed demo sessions and PostgreSQL document APIs. Rich-text editing, autosave, uploads, sharing UI, and production authentication are not implemented.
 
 ## Development
 
@@ -20,6 +20,7 @@ npm run build
 npm run db:validate
 npm run test:db
 npm run test:api
+npm run test:frontend
 ```
 
 ## Structure
@@ -76,6 +77,7 @@ Set a unique `DEMO_SESSION_SECRET` in ignored `.env.local` (generate with `opens
 
 | Endpoint | Behavior |
 | --- | --- |
+| `GET /api/demo/session` | Returns `{ user: { id, name, email } }` for a valid signed session, otherwise 401. Never returns cookie/signature data. |
 | `POST /api/demo/session` | JSON `{ "email": "alice@example.com" }` or Bob's seeded address; returns the existing user and sets a signed session cookie. Other fields/identities are rejected. |
 | `DELETE /api/demo/session` | Clears the cookie; returns 204, including when the cookie is missing or invalid. |
 | `GET /api/documents` | Lists owned and shared metadata, owner id/name, effective `OWNER`/`EDITOR`/`VIEWER` permission, and `owned`/`shared` relationship. Omits content and other recipients. Ordered by `updatedAt DESC, id DESC`. |
@@ -101,3 +103,21 @@ Content supports a strict Tiptap StarterKit subset: `doc`, paragraphs, headings 
 `npm run test:api` calls the real Next.js route handlers with `NextRequest` objects and real Prisma/Neon queries. It uses Node's `react-server` condition to honor server-only imports. Alice/Bob are read as existing seed users; created document IDs and any temporary third-user IDs are tracked and cleaned up explicitly. No seeded users or unrelated documents are deleted. Tests use a process-local random signing key rather than the configured local secret. Browser cookie enforcement, HTTP transport, and proxy configuration are not exercised by these handler-level tests.
 
 This assessment does not add login throttling, pagination, audit logging, or centralized server-side session revocation. Logout clears the browser cookie; a stolen token remains valid until expiration or secret rotation. The metadata list is currently unpaginated. Separate seed/database integration tests remain available with `npm run test:db`. An interrupted test process can leave its own fixture records behind.
+
+## Document dashboard
+
+The workspace at `/` discovers the current demo user with `GET /api/demo/session`, then loads metadata from `GET /api/documents` once. Selecting Alice/Bob or logging out uses the existing session POST/DELETE endpoints. Signed session data stays in the HTTP-only cookie; the frontend stores no credentials or session tokens. Session expiration clears displayed documents and returns to user selection.
+
+Owned and shared lists preserve API ordering and display titles, owners, permissions, and last-modified times in the browser's locale/time zone. Creating a default document updates local metadata immediately and opens `/documents/[id]`. Owners and editors can rename using the same title schema as the backend; only owners see Delete. Deletion requires confirmation. Successful rename/deletion reloads the list; 403/404 responses also refresh access while keeping a useful dialog error. Authorization remains enforced by the backend.
+
+The root page/layout remain Server Components. `src/components/dashboard` contains the interactive dashboard, local request/state hook, user selector, lists, and action dialog. Shared response types in `src/lib/api/contracts.ts` derive from server helpers with type-only imports; database and signing code is not shipped to the browser. Pending requests use abort signals, stale responses are ignored, and synchronous submission locks prevent repeated mutations. Session switches immediately remove the previous user's data.
+
+Dialogs use native modal semantics and inert backgrounds, explicit keyboard focus wrapping, Escape cancellation, safe initial focus, and return focus to the action trigger or workspace heading when a list refresh removes that trigger. Controls and forms have labels, focus indicators, validation feedback, and disabled pending states. Loading, retry, empty, network error, and expired-session states are included.
+
+`/documents/[id]` is an access-checked metadata placeholder with a return link. It uses the existing document GET endpoint, discards content from UI state, and does not render document content or provide editing/autosave. Phase 5 should replace this placeholder and retain backend permissions and content validation. The dashboard intentionally does not poll or subscribe to remote changes; shared lists are empty until shares exist in the database.
+
+### Frontend verification
+
+`npm run test:frontend` uses Vitest, jsdom, and React Testing Library with fetch mocked at the component boundary. It does not connect to Neon. Coverage includes user selection/switching, no session, loading/error/retry, grouping and metadata, stale responses, create/navigation and duplicate protection, title validation, role-specific actions, confirmation cancellation, dialog focus, permission changes, logout/expiry, unmount cancellation, and document placeholders. jsdom's missing native dialog methods are shimmed in test setup; browser checks cover actual dialog behavior.
+
+The existing `test:api` and `test:db` commands continue to use isolated Neon fixtures. `npm ci` installs the locked test-tool versions; they are development dependencies and are not used by the deployed application.

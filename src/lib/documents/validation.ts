@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { Prisma } from "../../generated/prisma/client";
+import { titleSchema } from "./title";
 
 export const documentIdSchema = z.cuid();
-const titleSchema = z.string().trim().min(1).max(200);
 const children = z.array(z.unknown()).max(2000);
 const mark = z.strictObject({ type: z.enum(["bold", "italic", "strike", "code", "underline"]) });
 const text = z.strictObject({ type: z.literal("text"), text: z.string().min(1).max(100_000), marks: z.array(mark).max(5).optional() });

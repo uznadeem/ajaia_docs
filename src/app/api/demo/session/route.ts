@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { handleApi, json, readJson, requireSameOrigin, ApiError } from "@/lib/api/http";
-import { createSession, sessionInputSchema, setSessionCookie } from "@/lib/auth/session";
+import { createSession, requireUser, sessionInputSchema, setSessionCookie } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
+export async function GET(request: NextRequest) {
+  return handleApi(async () => json({ user: await requireUser(request) }));
+}
 
 export async function POST(request: NextRequest) {
   return handleApi(async () => {

@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma } from "../../generated/prisma/client";
+import type { Prisma, Permission } from "../../generated/prisma/client";
 import { prisma } from "../db/prisma";
 import { ApiError } from "../api/http";
 
@@ -26,10 +26,11 @@ export function documentDto<T extends DocumentMetadata>(document: T, userId: str
   const owned = document.ownerId === userId;
   // A share may have been revoked between relation reads. Fail closed.
   if (!owned && !shares[0]) throw new ApiError(404, "NOT_FOUND", "Document not found.");
+  const permission: "OWNER" | Permission = owned ? "OWNER" : shares[0].permission;
   return {
     ...data,
     relationship: owned ? "owned" as const : "shared" as const,
-    permission: owned ? "OWNER" as const : shares[0].permission,
+    permission,
   };
 }
 

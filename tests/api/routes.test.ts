@@ -105,6 +105,19 @@ describe("Document API route integration", { concurrency: false }, () => {
   });
   after(async () => { await prisma.$disconnect(); });
 
+  it("reads the current demo identity without exposing signed session data", async () => {
+    const response = await sessions.GET(request("/api/demo/session", "GET", aliceCookie));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const body = await response.json() as { user: { id: string; name: string; email: string } };
+    assert.equal(body.user.id, alice.id);
+    assert.deepEqual(Object.keys(body.user).sort(), ["email", "id", "name"]);
+    assert.deepEqual(Object.keys(body), ["user"]);
+  });
+  it("requires a valid session when reading the current identity", async () => {
+    await error(await sessions.GET(request("/api/demo/session")), 401);
+    await error(await sessions.GET(request("/api/demo/session", "GET", `${SESSION_COOKIE}=invalid`)), 401);
+  });
   it("logs in both permitted demo users with private expiring cookies", async () => {
     for (const user of [alice, bob]) {
       const response = await login(user.email);
